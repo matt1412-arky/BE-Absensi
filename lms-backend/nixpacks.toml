@@ -1,0 +1,5 @@
+[phases.build]
+cmds = ["go build -o server ."]
+
+[start]
+cmd = "./server"
