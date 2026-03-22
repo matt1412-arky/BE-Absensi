@@ -88,6 +88,39 @@ type Schedule struct {
 	Class Class `gorm:"foreignKey:ClassID" json:"class,omitempty"`
 }
 
+func seedSuperadmin() {
+	password := getEnv("SUPERADMIN_PASSWORD", "superadmin123")
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		panic("failed to hash password: " + err.Error())
+	}
+
+	var superadmin User
+	err = db.Where("username = ?", "superadmin").First(&superadmin).Error
+
+	if err == gorm.ErrRecordNotFound {
+		// ✅ hanya create jika belum ada
+		err = db.Create(&User{
+			Username:     "superadmin",
+			PasswordHash: string(hash),
+			Role:         "superadmin",
+			Name:         "Super Admin",
+		}).Error
+
+		if err != nil {
+			panic("failed to create superadmin: " + err.Error())
+		}
+
+		println("✅ Superadmin created")
+	} else if err != nil {
+		panic("error checking superadmin: " + err.Error())
+	} else {
+		// ✅ tidak overwrite password
+		println("ℹ️ Superadmin already exists (password not changed)")
+	}
+}
+
 // ─── JWT ─────────────────────────────────────────────────────────────────────
 
 type Claims struct {
@@ -180,21 +213,23 @@ func main() {
 
 	db.AutoMigrate(&User{}, &Class{}, &Student{}, &Attendance{}, &Grade{}, &Schedule{})
 
-	// Seed superadmin - buat jika belum ada, update password jika sudah ada
-	hash, _ := bcrypt.GenerateFromPassword([]byte("superadmin123"), bcrypt.DefaultCost)
-	var superadmin User
-	if err := db.Where("username = ?", "superadmin").First(&superadmin).Error; err != nil {
-		// Belum ada, buat baru
-		db.Create(&User{
-			Username:     "superadmin",
-			PasswordHash: string(hash),
-			Role:         "superadmin",
-			Name:         "Super Admin",
-		})
-	} else {
-		// Sudah ada, update password hash agar selalu sinkron
-		db.Model(&superadmin).Update("password_hash", string(hash))
-	}
+	seedSuperadmin()
+
+	// // Seed superadmin - buat jika belum ada, update password jika sudah ada
+	// hash, _ := bcrypt.GenerateFromPassword([]byte("superadmin123"), bcrypt.DefaultCost)
+	// var superadmin User
+	// if err := db.Where("username = ?", "superadmin").First(&superadmin).Error; err != nil {
+	// 	// Belum ada, buat baru
+	// 	db.Create(&User{
+	// 		Username:     "superadmin",
+	// 		PasswordHash: string(hash),
+	// 		Role:         "superadmin",
+	// 		Name:         "Super Admin",
+	// 	})
+	// } else {
+	// 	// Sudah ada, update password hash agar selalu sinkron
+	// 	db.Model(&superadmin).Update("password_hash", string(hash))
+	// }
 
 	r := gin.Default()
 	r.Use(cors.New(cors.Config{
