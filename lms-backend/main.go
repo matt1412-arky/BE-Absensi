@@ -10,7 +10,6 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/joho/godotenv"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -81,8 +80,9 @@ type Schedule struct {
 	ClassID   uint      `json:"class_id"`
 	AdminID   uint      `json:"admin_id"` // which teacher
 	Subject   string    `json:"subject"`
-	Day       int       `json:"day"`  // 1=Monday..7=Sunday
-	TimeSlot  string    `json:"time"` // "08:30"
+	Day       int       `json:"day"`      // 1=Monday..7=Sunday
+	TimeSlot  string    `json:"time"`     // "08:30"
+	EndTime   string    `json:"end_time"` // "09:30"
 	CreatedAt time.Time `json:"created_at"`
 	// Relations
 	Class Class `gorm:"foreignKey:ClassID" json:"class,omitempty"`
@@ -167,8 +167,7 @@ func getClaims(c *gin.Context) *Claims {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 func main() {
-	godotenv.Load()
-	dsn := getEnv("DATABASE_URL", "host=localhost user=postgres password=123 dbname=gonzaga_lms port=5432 sslmode=disable")
+	dsn := getEnv("DATABASE_URL", "host=localhost user=postgres password=postgres dbname=gonzaga_lms port=5432 sslmode=disable")
 
 	var err error
 	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
@@ -624,6 +623,7 @@ func createSchedule(c *gin.Context) {
 		Subject string `json:"subject"`
 		Day     int    `json:"day"`
 		Time    string `json:"time"`
+		EndTime string `json:"end_time"`
 	}
 	c.BindJSON(&body)
 	s := Schedule{
@@ -632,6 +632,7 @@ func createSchedule(c *gin.Context) {
 		Subject:  body.Subject,
 		Day:      body.Day,
 		TimeSlot: body.Time,
+		EndTime:  body.EndTime,
 	}
 	db.Create(&s)
 	c.JSON(201, s)
