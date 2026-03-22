@@ -177,17 +177,20 @@ func main() {
 
 	db.AutoMigrate(&User{}, &Class{}, &Student{}, &Attendance{}, &Grade{}, &Schedule{})
 
-	// Seed superadmin if not exists
-	var count int64
-	db.Model(&User{}).Where("role = ?", "superadmin").Count(&count)
-	if count == 0 {
-		hash, _ := bcrypt.GenerateFromPassword([]byte("superadmin123"), bcrypt.DefaultCost)
+	// Seed superadmin - buat jika belum ada, update password jika sudah ada
+	hash, _ := bcrypt.GenerateFromPassword([]byte("superadmin123"), bcrypt.DefaultCost)
+	var superadmin User
+	if err := db.Where("username = ?", "superadmin").First(&superadmin).Error; err != nil {
+		// Belum ada, buat baru
 		db.Create(&User{
 			Username:     "superadmin",
 			PasswordHash: string(hash),
 			Role:         "superadmin",
 			Name:         "Super Admin",
 		})
+	} else {
+		// Sudah ada, update password hash agar selalu sinkron
+		db.Model(&superadmin).Update("password_hash", string(hash))
 	}
 
 	r := gin.Default()
