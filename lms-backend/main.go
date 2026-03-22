@@ -88,39 +88,6 @@ type Schedule struct {
 	Class Class `gorm:"foreignKey:ClassID" json:"class,omitempty"`
 }
 
-func seedSuperadmin() {
-	password := getEnv("SUPERADMIN_PASSWORD", "superadmin123")
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		panic("failed to hash password: " + err.Error())
-	}
-
-	var superadmin User
-	err = db.Where("username = ?", "superadmin").First(&superadmin).Error
-
-	if err == gorm.ErrRecordNotFound {
-		// ✅ hanya create jika belum ada
-		err = db.Create(&User{
-			Username:     "superadmin",
-			PasswordHash: string(hash),
-			Role:         "superadmin",
-			Name:         "Super Admin",
-		}).Error
-
-		if err != nil {
-			panic("failed to create superadmin: " + err.Error())
-		}
-
-		println("✅ Superadmin created")
-	} else if err != nil {
-		panic("error checking superadmin: " + err.Error())
-	} else {
-		// ✅ tidak overwrite password
-		println("ℹ️ Superadmin already exists (password not changed)")
-	}
-}
-
 // ─── JWT ─────────────────────────────────────────────────────────────────────
 
 type Claims struct {
@@ -200,7 +167,7 @@ func getClaims(c *gin.Context) *Claims {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 func main() {
-	dsn := getEnv("DATABASE_URL", "host=localhost user=postgres password=123 dbname=gonzaga_lms port=5432 sslmode=disable")
+	dsn := getEnv("DATABASE_URL", "host=localhost user=postgres password=postgres dbname=gonzaga_lms port=5432 sslmode=disable")
 
 	var err error
 	db, err = gorm.Open(postgres.New(postgres.Config{
@@ -213,23 +180,22 @@ func main() {
 
 	db.AutoMigrate(&User{}, &Class{}, &Student{}, &Attendance{}, &Grade{}, &Schedule{})
 
-	seedSuperadmin()
-
-	// // Seed superadmin - buat jika belum ada, update password jika sudah ada
-	// hash, _ := bcrypt.GenerateFromPassword([]byte("superadmin123"), bcrypt.DefaultCost)
-	// var superadmin User
-	// if err := db.Where("username = ?", "superadmin").First(&superadmin).Error; err != nil {
-	// 	// Belum ada, buat baru
-	// 	db.Create(&User{
-	// 		Username:     "superadmin",
-	// 		PasswordHash: string(hash),
-	// 		Role:         "superadmin",
-	// 		Name:         "Super Admin",
-	// 	})
-	// } else {
-	// 	// Sudah ada, update password hash agar selalu sinkron
-	// 	db.Model(&superadmin).Update("password_hash", string(hash))
-	// }
+	// Seed superadmin - hanya buat jika belum ada, TIDAK update password
+	var count int64
+	db.Model(&User{}).Where("username = ?", "superadmin").Count(&count)
+	if count == 0 {
+		password := getEnv("SUPERADMIN_PASSWORD", "superadmin123")
+		hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		db.Create(&User{
+			Username:     "superadmin",
+			PasswordHash: string(hash),
+			Role:         "superadmin",
+			Name:         "Super Admin",
+		})
+		println("✅ Superadmin created")
+	} else {
+		println("ℹ️  Superadmin already exists")
+	}
 
 	r := gin.Default()
 	r.Use(cors.New(cors.Config{
