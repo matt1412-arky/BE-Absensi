@@ -45,7 +45,7 @@ type Class struct {
 
 type Student struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
-	UserID    uint      `gorm:"uniqueIndex" json:"user_id"`
+	UserID    uint      `json:"user_id"`
 	ClassID   uint      `json:"class_id"`
 	Name      string    `json:"name"`
 	Points    int       `json:"points"`
