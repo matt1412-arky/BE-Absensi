@@ -200,7 +200,7 @@ func getClaims(c *gin.Context) *Claims {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 func main() {
-	dsn := getEnv("DATABASE_URL", "host=localhost user=postgres password=postgres dbname=gonzaga_lms port=5432 sslmode=disable")
+	dsn := getEnv("DATABASE_URL", "host=localhost user=postgres password=123 dbname=gonzaga_lms port=5432 sslmode=disable")
 
 	var err error
 	db, err = gorm.Open(postgres.New(postgres.Config{
