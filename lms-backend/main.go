@@ -170,7 +170,10 @@ func main() {
 	dsn := getEnv("DATABASE_URL", "host=localhost user=postgres password=postgres dbname=gonzaga_lms port=5432 sslmode=disable")
 
 	var err error
-	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	db, err = gorm.Open(postgres.New(postgres.Config{
+		DSN:                  dsn,
+		PreferSimpleProtocol: true, // disable prepared statements
+	}), &gorm.Config{})
 	if err != nil {
 		panic("failed to connect db: " + err.Error())
 	}
