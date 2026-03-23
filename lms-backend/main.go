@@ -28,64 +28,67 @@ func getEnv(key, fallback string) string {
 // ─── Models ──────────────────────────────────────────────────────────────────
 
 type User struct {
-	ID           uint      `gorm:"primaryKey" json:"id"`
-	Username     string    `gorm:"uniqueIndex;not null" json:"username"`
-	PasswordHash string    `gorm:"not null" json:"-"`
-	Role         string    `gorm:"not null" json:"role"` // superadmin | admin | student
-	Name         string    `json:"name"`
-	ClassID      *uint     `json:"class_id"` // only for students
-	CreatedAt    time.Time `json:"created_at"`
+	ID           uint           `gorm:"primaryKey" json:"id"`
+	Username     string         `gorm:"uniqueIndex;not null" json:"username"`
+	PasswordHash string         `gorm:"not null" json:"-"`
+	Role         string         `gorm:"not null" json:"role"`
+	Name         string         `json:"name"`
+	ClassID      *uint          `json:"class_id"`
+	CreatedAt    time.Time      `json:"created_at"`
+	DeletedAt    gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 }
 
 type Class struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	Name      string    `gorm:"uniqueIndex;not null" json:"name"` // e.g. "X-A", "XI-IPA"
-	CreatedAt time.Time `json:"created_at"`
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	Name      string         `gorm:"uniqueIndex;not null" json:"name"`
+	CreatedAt time.Time      `json:"created_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 }
 
 type Student struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	UserID    uint      `json:"user_id"`
-	ClassID   uint      `json:"class_id"`
-	Name      string    `json:"name"`
-	Points    int       `json:"points"`
-	CreatedAt time.Time `json:"created_at"`
-	// Relations
-	Class Class `gorm:"foreignKey:ClassID" json:"class,omitempty"`
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	UserID    uint           `json:"user_id"`
+	ClassID   uint           `json:"class_id"`
+	Name      string         `json:"name"`
+	Points    int            `json:"points"`
+	CreatedAt time.Time      `json:"created_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	Class     Class          `gorm:"foreignKey:ClassID" json:"class,omitempty"`
 }
 
 type Attendance struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	StudentID uint      `json:"student_id"`
 	ClassID   uint      `json:"class_id"`
-	Date      string    `json:"date"`   // YYYY-MM-DD
-	Status    string    `json:"status"` // present | absent | sick | permission
+	Date      string    `json:"date"`
+	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
 type Grade struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	StudentID uint      `json:"student_id"`
-	ClassID   uint      `json:"class_id"`
-	Subject   string    `json:"subject"`
-	Score     float64   `json:"score"`
-	Type      string    `json:"type"` // tugas | ulangan | uts | uas
-	Date      string    `json:"date"`
-	Notes     string    `json:"notes"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	StudentID uint           `json:"student_id"`
+	ClassID   uint           `json:"class_id"`
+	Subject   string         `json:"subject"`
+	Score     float64        `json:"score"`
+	Type      string         `json:"type"`
+	Date      string         `json:"date"`
+	Notes     string         `json:"notes"`
+	CreatedAt time.Time      `json:"created_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 }
 
 type Schedule struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	ClassID   uint      `json:"class_id"`
-	AdminID   uint      `json:"admin_id"` // which teacher
-	Subject   string    `json:"subject"`
-	Day       int       `json:"day"`      // 1=Monday..7=Sunday
-	TimeSlot  string    `json:"time"`     // "08:30"
-	EndTime   string    `json:"end_time"` // "09:30"
-	CreatedAt time.Time `json:"created_at"`
-	// Relations
-	Class Class `gorm:"foreignKey:ClassID" json:"class,omitempty"`
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	ClassID   uint           `json:"class_id"`
+	AdminID   uint           `json:"admin_id"`
+	Subject   string         `json:"subject"`
+	Day       int            `json:"day"`
+	TimeSlot  string         `json:"time"`
+	EndTime   string         `json:"end_time"`
+	CreatedAt time.Time      `json:"created_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	Class     Class          `gorm:"foreignKey:ClassID" json:"class,omitempty"`
 }
 
 // ─── JWT ─────────────────────────────────────────────────────────────────────
@@ -172,7 +175,7 @@ func main() {
 	var err error
 	db, err = gorm.Open(postgres.New(postgres.Config{
 		DSN:                  dsn,
-		PreferSimpleProtocol: true, // disable prepared statements
+		PreferSimpleProtocol: true,
 	}), &gorm.Config{})
 	if err != nil {
 		panic("failed to connect db: " + err.Error())
@@ -180,7 +183,6 @@ func main() {
 
 	db.AutoMigrate(&User{}, &Class{}, &Student{}, &Attendance{}, &Grade{}, &Schedule{})
 
-	// Seed superadmin - hanya buat jika belum ada, TIDAK update password
 	var count int64
 	db.Model(&User{}).Where("username = ?", "superadmin").Count(&count)
 	if count == 0 {
@@ -206,7 +208,6 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	// Public
 	r.POST("/api/auth/login", handleLogin)
 	r.GET("/", func(c *gin.Context) { c.String(200, "Gonzaga LMS Backend ✓") })
 
@@ -215,10 +216,8 @@ func main() {
 		auth.GET("/me", handleMe)
 		auth.PUT("/auth/change-password", handleChangePassword)
 
-		// ── Superadmin only ──────────────────────────────────────────────
 		sa := auth.Group("", roleMiddleware("superadmin"))
 		{
-			// Users management
 			sa.GET("/users", getUsers)
 			sa.POST("/users", createUser)
 			sa.PUT("/users/:id", updateUser)
@@ -226,45 +225,36 @@ func main() {
 			sa.PUT("/users/:id/password", handleAdminChangePassword)
 			sa.PUT("/users/:id/restore", restoreUser)
 			sa.GET("/users/deleted", getDeletedUsers)
-
-			// Classes management
 			sa.POST("/classes", createClass)
 			sa.PUT("/classes/:id", updateClass)
 			sa.DELETE("/classes/:id", deleteClass)
 			sa.PUT("/classes/:id/restore", restoreClass)
 		}
 
-		// ── Superadmin + Admin ───────────────────────────────────────────
 		adm := auth.Group("", roleMiddleware("superadmin", "admin"))
 		{
 			adm.GET("/classes", getClasses)
 			adm.GET("/classes/:id/students", getStudentsByClass)
-
 			adm.GET("/students", getStudents)
 			adm.POST("/students", createStudent)
 			adm.PUT("/students/:id", updateStudent)
 			adm.DELETE("/students/:id", deleteStudent)
 			adm.PUT("/students/:id/restore", restoreStudent)
 			adm.GET("/students/deleted", getDeletedStudents)
-
 			adm.POST("/attendance", createOrUpdateAttendance)
 			adm.GET("/attendance", getAttendance)
-
 			adm.GET("/grades", getGrades)
 			adm.POST("/grades", createGrade)
 			adm.PUT("/grades/:id", updateGrade)
 			adm.DELETE("/grades/:id", deleteGrade)
 			adm.PUT("/grades/:id/restore", restoreGrade)
-
 			adm.GET("/schedules", getSchedules)
 			adm.POST("/schedules", createSchedule)
 			adm.DELETE("/schedules/:id", deleteSchedule)
-
 			adm.GET("/stats", getStats)
 			adm.GET("/dashboard/admin", getDashboardAdmin)
 		}
 
-		// ── Student ──────────────────────────────────────────────────────
 		stu := auth.Group("", roleMiddleware("student"))
 		{
 			stu.GET("/student/me", getMyStudentProfile)
@@ -325,7 +315,60 @@ func handleMe(c *gin.Context) {
 	})
 }
 
-// ─── Users (Superadmin) ───────────────────────────────────────────────────────
+// ─── Change Password ──────────────────────────────────────────────────────────
+
+func handleChangePassword(c *gin.Context) {
+	claims := getClaims(c)
+	var body struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		c.JSON(400, gin.H{"error": "invalid payload"})
+		return
+	}
+	if len(body.NewPassword) < 6 {
+		c.JSON(400, gin.H{"error": "password baru minimal 6 karakter"})
+		return
+	}
+	var user User
+	if err := db.First(&user, claims.UserID).Error; err != nil {
+		c.JSON(404, gin.H{"error": "user tidak ditemukan"})
+		return
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(body.OldPassword)); err != nil {
+		c.JSON(401, gin.H{"error": "password lama salah"})
+		return
+	}
+	hash, _ := bcrypt.GenerateFromPassword([]byte(body.NewPassword), bcrypt.DefaultCost)
+	db.Model(&user).Update("password_hash", string(hash))
+	c.JSON(200, gin.H{"message": "password berhasil diubah"})
+}
+
+func handleAdminChangePassword(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var body struct {
+		NewPassword string `json:"new_password"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		c.JSON(400, gin.H{"error": "invalid payload"})
+		return
+	}
+	if len(body.NewPassword) < 6 {
+		c.JSON(400, gin.H{"error": "password minimal 6 karakter"})
+		return
+	}
+	var user User
+	if err := db.First(&user, id).Error; err != nil {
+		c.JSON(404, gin.H{"error": "user tidak ditemukan"})
+		return
+	}
+	hash, _ := bcrypt.GenerateFromPassword([]byte(body.NewPassword), bcrypt.DefaultCost)
+	db.Model(&user).Update("password_hash", string(hash))
+	c.JSON(200, gin.H{"message": "password berhasil diubah"})
+}
+
+// ─── Users ────────────────────────────────────────────────────────────────────
 
 func getUsers(c *gin.Context) {
 	var users []User
@@ -338,7 +381,7 @@ func createUser(c *gin.Context) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 		Name     string `json:"name"`
-		Role     string `json:"role"` // superadmin | admin | student
+		Role     string `json:"role"`
 		ClassID  *uint  `json:"class_id"`
 	}
 	if err := c.BindJSON(&body); err != nil {
@@ -357,7 +400,6 @@ func createUser(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "username sudah dipakai"})
 		return
 	}
-	// If student, also create Student record
 	if body.Role == "student" && body.ClassID != nil {
 		db.Create(&Student{
 			UserID:  user.ID,
@@ -485,28 +527,19 @@ func createStudent(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "kelas harus dipilih"})
 		return
 	}
-	// Pastikan kelas ada
 	var class Class
 	if err := db.First(&class, body.ClassID).Error; err != nil {
 		c.JSON(400, gin.H{"error": "kelas tidak ditemukan"})
 		return
 	}
-	s := Student{
-		Name:    body.Name,
-		ClassID: body.ClassID,
-		Points:  body.Points,
-	}
+	s := Student{Name: body.Name, ClassID: body.ClassID, Points: body.Points}
 	if err := db.Omit("Class").Create(&s).Error; err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(201, gin.H{
-		"id":         s.ID,
-		"user_id":    s.UserID,
-		"class_id":   s.ClassID,
-		"name":       s.Name,
-		"points":     s.Points,
-		"created_at": s.CreatedAt,
+		"id": s.ID, "user_id": s.UserID, "class_id": s.ClassID,
+		"name": s.Name, "points": s.Points, "created_at": s.CreatedAt,
 	})
 }
 
@@ -550,17 +583,13 @@ func createOrUpdateAttendance(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-
-	// Points based on status
 	pointsDelta := 0
 	if body.Status == "present" {
 		pointsDelta = 1
 	}
-
 	var existing Attendance
 	res := db.Where("student_id = ? AND date = ?", body.StudentID, body.Date).First(&existing)
 	if res.Error == nil {
-		// Reverse old points
 		if existing.Status == "present" {
 			pointsDelta -= 1
 		}
@@ -568,21 +597,15 @@ func createOrUpdateAttendance(c *gin.Context) {
 		existing.ClassID = body.ClassID
 		db.Save(&existing)
 	} else {
-		a := Attendance{
-			StudentID: body.StudentID,
-			ClassID:   body.ClassID,
-			Date:      body.Date,
-			Status:    body.Status,
-		}
-		db.Create(&a)
+		db.Create(&Attendance{
+			StudentID: body.StudentID, ClassID: body.ClassID,
+			Date: body.Date, Status: body.Status,
+		})
 	}
-
-	// Update student points
 	if pointsDelta != 0 {
 		db.Model(&Student{}).Where("id = ?", body.StudentID).
 			UpdateColumn("points", gorm.Expr("points + ?", pointsDelta))
 	}
-
 	c.JSON(200, gin.H{"success": true})
 }
 
@@ -591,7 +614,6 @@ func getAttendance(c *gin.Context) {
 	classID := c.Query("class_id")
 	start := c.Query("start")
 	end := c.Query("end")
-
 	var records []Attendance
 	q := db.Order("date desc")
 	if studentID != "" {
@@ -672,16 +694,11 @@ func createSchedule(c *gin.Context) {
 		EndTime string `json:"end_time"`
 	}
 	c.BindJSON(&body)
-	s := Schedule{
-		ClassID:  body.ClassID,
-		AdminID:  body.AdminID,
-		Subject:  body.Subject,
-		Day:      body.Day,
-		TimeSlot: body.Time,
-		EndTime:  body.EndTime,
-	}
-	db.Create(&s)
-	c.JSON(201, s)
+	db.Create(&Schedule{
+		ClassID: body.ClassID, AdminID: body.AdminID, Subject: body.Subject,
+		Day: body.Day, TimeSlot: body.Time, EndTime: body.EndTime,
+	})
+	c.JSON(201, gin.H{"success": true})
 }
 
 func deleteSchedule(c *gin.Context) {
@@ -690,7 +707,7 @@ func deleteSchedule(c *gin.Context) {
 	c.JSON(200, gin.H{"deleted": id})
 }
 
-// ─── Stats & Dashboard ───────────────────────────────────────────────────────
+// ─── Stats & Dashboard ────────────────────────────────────────────────────────
 
 func getStats(c *gin.Context) {
 	classID := c.Query("class_id")
@@ -713,7 +730,6 @@ func getStats(c *gin.Context) {
 		AttendanceRate float64 `json:"attendance_rate"`
 		AvgScore       float64 `json:"avg_score"`
 	}
-
 	var students []Student
 	q := db.Preload("Class")
 	if classID != "" {
@@ -733,14 +749,9 @@ func getStats(c *gin.Context) {
 		var avgScore float64
 		db.Model(&Grade{}).Select("COALESCE(AVG(score), 0)").Where("student_id = ? AND date BETWEEN ? AND ?", s.ID, start, end).Scan(&avgScore)
 		out = append(out, StatRow{
-			StudentID:      s.ID,
-			Name:           s.Name,
-			ClassName:      s.Class.Name,
-			Points:         s.Points,
-			PresentCount:   present,
-			TotalCount:     total,
-			AttendanceRate: rate,
-			AvgScore:       avgScore,
+			StudentID: s.ID, Name: s.Name, ClassName: s.Class.Name,
+			Points: s.Points, PresentCount: present, TotalCount: total,
+			AttendanceRate: rate, AvgScore: avgScore,
 		})
 	}
 	c.JSON(200, gin.H{"students": out, "start": start, "end": end})
@@ -748,81 +759,53 @@ func getStats(c *gin.Context) {
 
 func getDashboardAdmin(c *gin.Context) {
 	claims := getClaims(c)
-
-	// Today's schedules
 	today := int(time.Now().Weekday())
 	if today == 0 {
 		today = 7
 	}
 	var schedules []Schedule
 	db.Preload("Class").Where("admin_id = ? AND day = ?", claims.UserID, today).Find(&schedules)
-
-	// Recent attendance
 	todayStr := time.Now().Format("2006-01-02")
-	var todayAttendance []Attendance
-	db.Where("date = ?", todayStr).Find(&todayAttendance)
-
-	// Count per status
 	statusCount := map[string]int64{}
 	for _, s := range []string{"present", "absent", "sick", "permission"} {
 		var cnt int64
 		db.Model(&Attendance{}).Where("date = ? AND status = ?", todayStr, s).Count(&cnt)
 		statusCount[s] = cnt
 	}
-
-	// Total students
 	var totalStudents int64
 	db.Model(&Student{}).Count(&totalStudents)
-
 	c.JSON(200, gin.H{
-		"today_schedules":  schedules,
-		"today_attendance": statusCount,
-		"total_students":   totalStudents,
-		"date":             todayStr,
+		"today_schedules": schedules, "today_attendance": statusCount,
+		"total_students": totalStudents, "date": todayStr,
 	})
 }
 
 func getDashboardStudent(c *gin.Context) {
 	claims := getClaims(c)
-
 	var student Student
 	if err := db.Preload("Class").Where("user_id = ?", claims.UserID).First(&student).Error; err != nil {
 		c.JSON(404, gin.H{"error": "profil siswa tidak ditemukan"})
 		return
 	}
-
-	// Last 30 days attendance
 	start := time.Now().AddDate(0, 0, -30).Format("2006-01-02")
 	end := time.Now().Format("2006-01-02")
 	var attendances []Attendance
 	db.Where("student_id = ? AND date BETWEEN ? AND ?", student.ID, start, end).Order("date desc").Find(&attendances)
-
-	// Grades
 	var grades []Grade
 	db.Where("student_id = ?", student.ID).Order("date desc").Limit(20).Find(&grades)
-
-	// Attendance summary
-	var presentCount int64
+	var presentCount, totalCount int64
 	db.Model(&Attendance{}).Where("student_id = ? AND date BETWEEN ? AND ? AND status = ?", student.ID, start, end, "present").Count(&presentCount)
-	var totalCount int64
 	db.Model(&Attendance{}).Where("student_id = ? AND date BETWEEN ? AND ?", student.ID, start, end).Count(&totalCount)
 	rate := 0.0
 	if totalCount > 0 {
 		rate = float64(presentCount) / float64(totalCount) * 100
 	}
-
 	var avgScore float64
 	db.Model(&Grade{}).Select("COALESCE(AVG(score), 0)").Where("student_id = ?", student.ID).Scan(&avgScore)
-
 	c.JSON(200, gin.H{
-		"student":         student,
-		"attendances":     attendances,
-		"grades":          grades,
-		"present_count":   presentCount,
-		"total_count":     totalCount,
-		"attendance_rate": rate,
-		"avg_score":       avgScore,
-		"points":          student.Points,
+		"student": student, "attendances": attendances, "grades": grades,
+		"present_count": presentCount, "total_count": totalCount,
+		"attendance_rate": rate, "avg_score": avgScore, "points": student.Points,
 	})
 }
 
@@ -845,59 +828,13 @@ func getMyAttendance(c *gin.Context) {
 	c.JSON(200, records)
 }
 
-// ─── Change Password ──────────────────────────────────────────────────────────
-
-// User ganti password sendiri (perlu password lama)
-func handleChangePassword(c *gin.Context) {
+func getMyGrades(c *gin.Context) {
 	claims := getClaims(c)
-	var body struct {
-		OldPassword string `json:"old_password"`
-		NewPassword string `json:"new_password"`
-	}
-	if err := c.BindJSON(&body); err != nil {
-		c.JSON(400, gin.H{"error": "invalid payload"})
-		return
-	}
-	if len(body.NewPassword) < 6 {
-		c.JSON(400, gin.H{"error": "password baru minimal 6 karakter"})
-		return
-	}
-	var user User
-	if err := db.First(&user, claims.UserID).Error; err != nil {
-		c.JSON(404, gin.H{"error": "user tidak ditemukan"})
-		return
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(body.OldPassword)); err != nil {
-		c.JSON(401, gin.H{"error": "password lama salah"})
-		return
-	}
-	hash, _ := bcrypt.GenerateFromPassword([]byte(body.NewPassword), bcrypt.DefaultCost)
-	db.Model(&user).Update("password_hash", string(hash))
-	c.JSON(200, gin.H{"message": "password berhasil diubah"})
-}
-
-// Superadmin ganti password user lain (tanpa perlu password lama)
-func handleAdminChangePassword(c *gin.Context) {
-	id, _ := strconv.Atoi(c.Param("id"))
-	var body struct {
-		NewPassword string `json:"new_password"`
-	}
-	if err := c.BindJSON(&body); err != nil {
-		c.JSON(400, gin.H{"error": "invalid payload"})
-		return
-	}
-	if len(body.NewPassword) < 6 {
-		c.JSON(400, gin.H{"error": "password minimal 6 karakter"})
-		return
-	}
-	var user User
-	if err := db.First(&user, id).Error; err != nil {
-		c.JSON(404, gin.H{"error": "user tidak ditemukan"})
-		return
-	}
-	hash, _ := bcrypt.GenerateFromPassword([]byte(body.NewPassword), bcrypt.DefaultCost)
-	db.Model(&user).Update("password_hash", string(hash))
-	c.JSON(200, gin.H{"message": "password berhasil diubah"})
+	var student Student
+	db.Where("user_id = ?", claims.UserID).First(&student)
+	var grades []Grade
+	db.Where("student_id = ?", student.ID).Order("date desc").Find(&grades)
+	c.JSON(200, grades)
 }
 
 // ─── Restore (Soft Delete Recovery) ──────────────────────────────────────────
@@ -936,13 +873,4 @@ func restoreGrade(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	db.Unscoped().Model(&Grade{}).Where("id = ?", id).Update("deleted_at", nil)
 	c.JSON(200, gin.H{"message": "nilai dipulihkan"})
-}
-
-func getMyGrades(c *gin.Context) {
-	claims := getClaims(c)
-	var student Student
-	db.Where("user_id = ?", claims.UserID).First(&student)
-	var grades []Grade
-	db.Where("student_id = ?", student.ID).Order("date desc").Find(&grades)
-	c.JSON(200, grades)
 }
