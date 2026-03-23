@@ -371,8 +371,17 @@ func handleAdminChangePassword(c *gin.Context) {
 // ─── Users ────────────────────────────────────────────────────────────────────
 
 func getUsers(c *gin.Context) {
+	orderBy := c.DefaultQuery("order_by", "name")
+	sort := c.DefaultQuery("sort", "asc")
+	allowedOrder := map[string]bool{"name": true, "username": true, "role": true, "created_at": true}
+	if !allowedOrder[orderBy] {
+		orderBy = "name"
+	}
+	if sort != "asc" && sort != "desc" {
+		sort = "asc"
+	}
 	var users []User
-	db.Find(&users)
+	db.Order(orderBy + " " + sort).Find(&users)
 	c.JSON(200, users)
 }
 
@@ -500,8 +509,17 @@ func getStudentsByClass(c *gin.Context) {
 
 func getStudents(c *gin.Context) {
 	classID := c.Query("class_id")
+	orderBy := c.DefaultQuery("order_by", "name")
+	sort := c.DefaultQuery("sort", "asc")
+	allowedOrder := map[string]bool{"name": true, "points": true, "created_at": true}
+	if !allowedOrder[orderBy] {
+		orderBy = "name"
+	}
+	if sort != "asc" && sort != "desc" {
+		sort = "asc"
+	}
 	var students []Student
-	q := db.Preload("Class")
+	q := db.Preload("Class").Order(orderBy + " " + sort)
 	if classID != "" {
 		q = q.Where("class_id = ?", classID)
 	}
@@ -614,8 +632,12 @@ func getAttendance(c *gin.Context) {
 	classID := c.Query("class_id")
 	start := c.Query("start")
 	end := c.Query("end")
+	sort := c.DefaultQuery("sort", "desc")
+	if sort != "asc" && sort != "desc" {
+		sort = "desc"
+	}
 	var records []Attendance
-	q := db.Order("date desc")
+	q := db.Order("date " + sort)
 	if studentID != "" {
 		q = q.Where("student_id = ?", studentID)
 	}
@@ -634,8 +656,17 @@ func getAttendance(c *gin.Context) {
 func getGrades(c *gin.Context) {
 	studentID := c.Query("student_id")
 	classID := c.Query("class_id")
+	orderBy := c.DefaultQuery("order_by", "date")
+	sort := c.DefaultQuery("sort", "desc")
+	allowedOrder := map[string]bool{"date": true, "score": true, "subject": true, "type": true}
+	if !allowedOrder[orderBy] {
+		orderBy = "date"
+	}
+	if sort != "asc" && sort != "desc" {
+		sort = "desc"
+	}
 	var grades []Grade
-	q := db.Order("date desc")
+	q := db.Order(orderBy + " " + sort)
 	if studentID != "" {
 		q = q.Where("student_id = ?", studentID)
 	}
