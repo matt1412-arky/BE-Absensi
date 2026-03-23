@@ -259,6 +259,7 @@ func main() {
 			adm.PUT("/grades/:id", updateGrade)
 			adm.DELETE("/grades/:id", deleteGrade)
 			adm.PUT("/grades/:id/restore", restoreGrade)
+			adm.GET("/grades/deleted", getDeletedGrades)
 			adm.GET("/schedules", getSchedules)
 			adm.POST("/schedules", createSchedule)
 			adm.DELETE("/schedules/:id", deleteSchedule)
@@ -994,6 +995,17 @@ func restoreStudent(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	db.Unscoped().Model(&Student{}).Where("id = ?", id).Update("deleted_at", nil)
 	c.JSON(200, gin.H{"message": "siswa dipulihkan"})
+}
+
+func getDeletedGrades(c *gin.Context) {
+	classID := c.Query("class_id")
+	var grades []Grade
+	q := db.Unscoped().Where("grades.deleted_at IS NOT NULL")
+	if classID != "" {
+		q = q.Where("class_id = ?", classID)
+	}
+	q.Order("created_at desc").Find(&grades)
+	c.JSON(200, grades)
 }
 
 func restoreGrade(c *gin.Context) {
