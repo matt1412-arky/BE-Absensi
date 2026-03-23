@@ -214,7 +214,6 @@ func main() {
 	{
 		auth.GET("/me", handleMe)
 		auth.PUT("/auth/change-password", handleChangePassword)
-		auth.PUT("/auth/change-password", handleChangePassword)
 
 		// ── Superadmin only ──────────────────────────────────────────────
 		sa := auth.Group("", roleMiddleware("superadmin"))
