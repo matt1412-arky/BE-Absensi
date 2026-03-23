@@ -167,7 +167,7 @@ func getClaims(c *gin.Context) *Claims {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 func main() {
-	dsn := getEnv("DATABASE_URL", "host=localhost user=postgres password=postgres dbname=gonzaga_lms port=5432 sslmode=disable")
+	dsn := getEnv("DATABASE_URL", "host=localhost user=postgres password=123 dbname=gonzaga_lms port=5432 sslmode=disable")
 
 	var err error
 	db, err = gorm.Open(postgres.New(postgres.Config{
@@ -213,6 +213,8 @@ func main() {
 	auth := r.Group("/api", authMiddleware())
 	{
 		auth.GET("/me", handleMe)
+		auth.PUT("/auth/change-password", handleChangePassword)
+		auth.PUT("/auth/change-password", handleChangePassword)
 
 		// ── Superadmin only ──────────────────────────────────────────────
 		sa := auth.Group("", roleMiddleware("superadmin"))
@@ -222,6 +224,8 @@ func main() {
 			sa.POST("/users", createUser)
 			sa.PUT("/users/:id", updateUser)
 			sa.DELETE("/users/:id", deleteUser)
+			sa.PUT("/users/:id/password", handleAdminChangePassword)
+			sa.PUT("/users/:id/password", handleAdminChangePassword)
 
 			// Classes management
 			sa.POST("/classes", createClass)
@@ -465,10 +469,41 @@ func createStudent(c *gin.Context) {
 		ClassID uint   `json:"class_id"`
 		Points  int    `json:"points"`
 	}
-	c.BindJSON(&body)
-	s := Student{Name: body.Name, ClassID: body.ClassID, Points: body.Points}
-	db.Create(&s)
-	c.JSON(201, s)
+	if err := c.BindJSON(&body); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if body.Name == "" {
+		c.JSON(400, gin.H{"error": "nama tidak boleh kosong"})
+		return
+	}
+	if body.ClassID == 0 {
+		c.JSON(400, gin.H{"error": "kelas harus dipilih"})
+		return
+	}
+	// Pastikan kelas ada
+	var class Class
+	if err := db.First(&class, body.ClassID).Error; err != nil {
+		c.JSON(400, gin.H{"error": "kelas tidak ditemukan"})
+		return
+	}
+	s := Student{
+		Name:    body.Name,
+		ClassID: body.ClassID,
+		Points:  body.Points,
+	}
+	if err := db.Omit("Class").Create(&s).Error; err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(201, gin.H{
+		"id":         s.ID,
+		"user_id":    s.UserID,
+		"class_id":   s.ClassID,
+		"name":       s.Name,
+		"points":     s.Points,
+		"created_at": s.CreatedAt,
+	})
 }
 
 func updateStudent(c *gin.Context) {
@@ -804,6 +839,61 @@ func getMyAttendance(c *gin.Context) {
 	var records []Attendance
 	db.Where("student_id = ?", student.ID).Order("date desc").Find(&records)
 	c.JSON(200, records)
+}
+
+// ─── Change Password ──────────────────────────────────────────────────────────
+
+// User ganti password sendiri (perlu password lama)
+func handleChangePassword(c *gin.Context) {
+	claims := getClaims(c)
+	var body struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		c.JSON(400, gin.H{"error": "invalid payload"})
+		return
+	}
+	if len(body.NewPassword) < 6 {
+		c.JSON(400, gin.H{"error": "password baru minimal 6 karakter"})
+		return
+	}
+	var user User
+	if err := db.First(&user, claims.UserID).Error; err != nil {
+		c.JSON(404, gin.H{"error": "user tidak ditemukan"})
+		return
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(body.OldPassword)); err != nil {
+		c.JSON(401, gin.H{"error": "password lama salah"})
+		return
+	}
+	hash, _ := bcrypt.GenerateFromPassword([]byte(body.NewPassword), bcrypt.DefaultCost)
+	db.Model(&user).Update("password_hash", string(hash))
+	c.JSON(200, gin.H{"message": "password berhasil diubah"})
+}
+
+// Superadmin ganti password user lain (tanpa perlu password lama)
+func handleAdminChangePassword(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var body struct {
+		NewPassword string `json:"new_password"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		c.JSON(400, gin.H{"error": "invalid payload"})
+		return
+	}
+	if len(body.NewPassword) < 6 {
+		c.JSON(400, gin.H{"error": "password minimal 6 karakter"})
+		return
+	}
+	var user User
+	if err := db.First(&user, id).Error; err != nil {
+		c.JSON(404, gin.H{"error": "user tidak ditemukan"})
+		return
+	}
+	hash, _ := bcrypt.GenerateFromPassword([]byte(body.NewPassword), bcrypt.DefaultCost)
+	db.Model(&user).Update("password_hash", string(hash))
+	c.JSON(200, gin.H{"message": "password berhasil diubah"})
 }
 
 func getMyGrades(c *gin.Context) {
