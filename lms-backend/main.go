@@ -91,6 +91,17 @@ type Schedule struct {
 	Class     Class          `gorm:"foreignKey:ClassID" json:"class,omitempty"`
 }
 
+type PointHistory struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	StudentID uint      `json:"student_id"`
+	AdminID   uint      `json:"admin_id"`
+	Delta     int       `json:"delta"` // positif = tambah, negatif = kurang
+	Reason    string    `json:"reason"`
+	CreatedAt time.Time `json:"created_at"`
+	// Relations
+	Student Student `gorm:"foreignKey:StudentID" json:"student,omitempty"`
+}
+
 // ─── JWT ─────────────────────────────────────────────────────────────────────
 
 type Claims struct {
@@ -181,7 +192,7 @@ func main() {
 		panic("failed to connect db: " + err.Error())
 	}
 
-	db.AutoMigrate(&User{}, &Class{}, &Student{}, &Attendance{}, &Grade{}, &Schedule{})
+	db.AutoMigrate(&User{}, &Class{}, &Student{}, &Attendance{}, &Grade{}, &Schedule{}, &PointHistory{})
 
 	var count int64
 	db.Model(&User{}).Where("username = ?", "superadmin").Count(&count)
@@ -251,6 +262,9 @@ func main() {
 			adm.GET("/schedules", getSchedules)
 			adm.POST("/schedules", createSchedule)
 			adm.DELETE("/schedules/:id", deleteSchedule)
+			adm.PUT("/schedules/:id", updateSchedule)
+			adm.GET("/students/:id/points", getPointHistory)
+			adm.POST("/students/:id/points", addPointHistory)
 			adm.GET("/stats", getStats)
 			adm.GET("/dashboard/admin", getDashboardAdmin)
 		}
@@ -732,6 +746,40 @@ func createSchedule(c *gin.Context) {
 	c.JSON(201, gin.H{"success": true})
 }
 
+func updateSchedule(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var s Schedule
+	if err := db.First(&s, id).Error; err != nil {
+		c.JSON(404, gin.H{"error": "jadwal tidak ditemukan"})
+		return
+	}
+	var body struct {
+		ClassID uint   `json:"class_id"`
+		Subject string `json:"subject"`
+		Day     int    `json:"day"`
+		Time    string `json:"time"`
+		EndTime string `json:"end_time"`
+	}
+	c.BindJSON(&body)
+	if body.ClassID != 0 {
+		s.ClassID = body.ClassID
+	}
+	if body.Subject != "" {
+		s.Subject = body.Subject
+	}
+	if body.Day != 0 {
+		s.Day = body.Day
+	}
+	if body.Time != "" {
+		s.TimeSlot = body.Time
+	}
+	if body.EndTime != "" {
+		s.EndTime = body.EndTime
+	}
+	db.Save(&s)
+	c.JSON(200, s)
+}
+
 func deleteSchedule(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	db.Delete(&Schedule{}, id)
@@ -857,6 +905,54 @@ func getMyAttendance(c *gin.Context) {
 	var records []Attendance
 	db.Where("student_id = ?", student.ID).Order("date desc").Find(&records)
 	c.JSON(200, records)
+}
+
+// ─── Point History ───────────────────────────────────────────────────────────
+
+func getPointHistory(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var history []PointHistory
+	db.Where("student_id = ?", id).Order("created_at desc").Find(&history)
+	c.JSON(200, history)
+}
+
+func addPointHistory(c *gin.Context) {
+	claims := getClaims(c)
+	studentID, _ := strconv.Atoi(c.Param("id"))
+	var body struct {
+		Delta  int    `json:"delta"`
+		Reason string `json:"reason"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		c.JSON(400, gin.H{"error": "invalid payload"})
+		return
+	}
+	if body.Delta == 0 {
+		c.JSON(400, gin.H{"error": "delta tidak boleh 0"})
+		return
+	}
+	if body.Reason == "" {
+		c.JSON(400, gin.H{"error": "alasan tidak boleh kosong"})
+		return
+	}
+	// Update student points
+	var student Student
+	if err := db.First(&student, studentID).Error; err != nil {
+		c.JSON(404, gin.H{"error": "siswa tidak ditemukan"})
+		return
+	}
+	db.Model(&student).UpdateColumn("points", gorm.Expr("points + ?", body.Delta))
+	// Save history
+	h := PointHistory{
+		StudentID: uint(studentID),
+		AdminID:   claims.UserID,
+		Delta:     body.Delta,
+		Reason:    body.Reason,
+	}
+	db.Create(&h)
+	// Return updated student
+	db.First(&student, studentID)
+	c.JSON(200, gin.H{"success": true, "points": student.Points, "history": h})
 }
 
 func getMyGrades(c *gin.Context) {
