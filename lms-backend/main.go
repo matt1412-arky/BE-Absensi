@@ -224,11 +224,14 @@ func main() {
 			sa.PUT("/users/:id", updateUser)
 			sa.DELETE("/users/:id", deleteUser)
 			sa.PUT("/users/:id/password", handleAdminChangePassword)
+			sa.PUT("/users/:id/restore", restoreUser)
+			sa.GET("/users/deleted", getDeletedUsers)
 
 			// Classes management
 			sa.POST("/classes", createClass)
 			sa.PUT("/classes/:id", updateClass)
 			sa.DELETE("/classes/:id", deleteClass)
+			sa.PUT("/classes/:id/restore", restoreClass)
 		}
 
 		// ── Superadmin + Admin ───────────────────────────────────────────
@@ -241,6 +244,8 @@ func main() {
 			adm.POST("/students", createStudent)
 			adm.PUT("/students/:id", updateStudent)
 			adm.DELETE("/students/:id", deleteStudent)
+			adm.PUT("/students/:id/restore", restoreStudent)
+			adm.GET("/students/deleted", getDeletedStudents)
 
 			adm.POST("/attendance", createOrUpdateAttendance)
 			adm.GET("/attendance", getAttendance)
@@ -249,6 +254,7 @@ func main() {
 			adm.POST("/grades", createGrade)
 			adm.PUT("/grades/:id", updateGrade)
 			adm.DELETE("/grades/:id", deleteGrade)
+			adm.PUT("/grades/:id/restore", restoreGrade)
 
 			adm.GET("/schedules", getSchedules)
 			adm.POST("/schedules", createSchedule)
@@ -892,6 +898,44 @@ func handleAdminChangePassword(c *gin.Context) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte(body.NewPassword), bcrypt.DefaultCost)
 	db.Model(&user).Update("password_hash", string(hash))
 	c.JSON(200, gin.H{"message": "password berhasil diubah"})
+}
+
+// ─── Restore (Soft Delete Recovery) ──────────────────────────────────────────
+
+func getDeletedUsers(c *gin.Context) {
+	var users []User
+	db.Unscoped().Where("deleted_at IS NOT NULL").Find(&users)
+	c.JSON(200, users)
+}
+
+func restoreUser(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	db.Unscoped().Model(&User{}).Where("id = ?", id).Update("deleted_at", nil)
+	c.JSON(200, gin.H{"message": "user dipulihkan"})
+}
+
+func restoreClass(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	db.Unscoped().Model(&Class{}).Where("id = ?", id).Update("deleted_at", nil)
+	c.JSON(200, gin.H{"message": "kelas dipulihkan"})
+}
+
+func getDeletedStudents(c *gin.Context) {
+	var students []Student
+	db.Unscoped().Preload("Class").Where("students.deleted_at IS NOT NULL").Find(&students)
+	c.JSON(200, students)
+}
+
+func restoreStudent(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	db.Unscoped().Model(&Student{}).Where("id = ?", id).Update("deleted_at", nil)
+	c.JSON(200, gin.H{"message": "siswa dipulihkan"})
+}
+
+func restoreGrade(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	db.Unscoped().Model(&Grade{}).Where("id = ?", id).Update("deleted_at", nil)
+	c.JSON(200, gin.H{"message": "nilai dipulihkan"})
 }
 
 func getMyGrades(c *gin.Context) {
