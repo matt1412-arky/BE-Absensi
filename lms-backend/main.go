@@ -224,7 +224,6 @@ func main() {
 			sa.PUT("/users/:id", updateUser)
 			sa.DELETE("/users/:id", deleteUser)
 			sa.PUT("/users/:id/password", handleAdminChangePassword)
-			sa.PUT("/users/:id/password", handleAdminChangePassword)
 
 			// Classes management
 			sa.POST("/classes", createClass)
