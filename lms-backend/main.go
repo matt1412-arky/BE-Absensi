@@ -616,16 +616,9 @@ func createOrUpdateAttendance(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	pointsDelta := 0
-	if body.Status == "present" {
-		pointsDelta = 1
-	}
 	var existing Attendance
 	res := db.Where("student_id = ? AND date = ?", body.StudentID, body.Date).First(&existing)
 	if res.Error == nil {
-		if existing.Status == "present" {
-			pointsDelta -= 1
-		}
 		existing.Status = body.Status
 		existing.ClassID = body.ClassID
 		db.Save(&existing)
@@ -634,10 +627,6 @@ func createOrUpdateAttendance(c *gin.Context) {
 			StudentID: body.StudentID, ClassID: body.ClassID,
 			Date: body.Date, Status: body.Status,
 		})
-	}
-	if pointsDelta != 0 {
-		db.Model(&Student{}).Where("id = ?", body.StudentID).
-			UpdateColumn("points", gorm.Expr("points + ?", pointsDelta))
 	}
 	c.JSON(200, gin.H{"success": true})
 }
