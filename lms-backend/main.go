@@ -402,11 +402,12 @@ func getUsers(c *gin.Context) {
 
 func createUser(c *gin.Context) {
 	var body struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-		Name     string `json:"name"`
-		Role     string `json:"role"`
-		ClassID  *uint  `json:"class_id"`
+		Username  string `json:"username"`
+		Password  string `json:"password"`
+		Name      string `json:"name"`
+		Role      string `json:"role"`
+		ClassID   *uint  `json:"class_id"`
+		StudentID *uint  `json:"student_id"` // opsional: link ke siswa yang sudah ada
 	}
 	if err := c.BindJSON(&body); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
@@ -424,13 +425,35 @@ func createUser(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "username sudah dipakai"})
 		return
 	}
-	if body.Role == "student" && body.ClassID != nil {
-		db.Create(&Student{
-			UserID:  user.ID,
-			ClassID: *body.ClassID,
-			Name:    body.Name,
-			Points:  0,
-		})
+	if body.Role == "student" {
+		if body.StudentID != nil {
+			// Link akun ke data siswa yang sudah ada
+			var existing Student
+			if err := db.First(&existing, *body.StudentID).Error; err != nil {
+				c.JSON(404, gin.H{"error": "data siswa tidak ditemukan"})
+				return
+			}
+			if existing.UserID != 0 {
+				c.JSON(400, gin.H{"error": "siswa ini sudah memiliki akun"})
+				return
+			}
+			db.Model(&existing).Updates(map[string]interface{}{
+				"user_id": user.ID,
+				"name":    body.Name,
+			})
+			// Sinkronkan class_id di user jika belum diset
+			if body.ClassID == nil {
+				db.Model(&user).Update("class_id", existing.ClassID)
+			}
+		} else if body.ClassID != nil {
+			// Buat data siswa baru seperti sebelumnya
+			db.Create(&Student{
+				UserID:  user.ID,
+				ClassID: *body.ClassID,
+				Name:    body.Name,
+				Points:  0,
+			})
+		}
 	}
 	c.JSON(201, user)
 }
