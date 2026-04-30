@@ -466,12 +466,22 @@ func updateUser(c *gin.Context) {
 		return
 	}
 	var body struct {
+		Username string `json:"username"`
 		Name     string `json:"name"`
 		Password string `json:"password"`
 		Role     string `json:"role"`
 		ClassID  *uint  `json:"class_id"`
 	}
 	c.BindJSON(&body)
+	if body.Username != "" && body.Username != user.Username {
+		// Cek apakah username sudah dipakai user lain
+		var existing User
+		if err := db.Where("username = ? AND id != ?", body.Username, id).First(&existing).Error; err == nil {
+			c.JSON(400, gin.H{"error": "username sudah dipakai"})
+			return
+		}
+		user.Username = body.Username
+	}
 	if body.Name != "" {
 		user.Name = body.Name
 	}
